@@ -13,6 +13,6 @@ https://bbs.pediy.com/thread-264680.htm
 ## todo
 1. 改为 C 实现。脱离 python
 2. arm32
-3. 
+3. 更多功能。。。
 
 
