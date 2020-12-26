@@ -1,5 +1,6 @@
 
 # sktrace
+https://bbs.pediy.com/thread-264680.htm
 
 ## 功能
 1. 类似 ida 指令 trace 功能
