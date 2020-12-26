@@ -9,7 +9,7 @@ import json
 import os
 import frida
 
-from trace import TraceMgr
+from sktracemgr import TraceMgr
 
 __version__ = "1.0.0"
 
@@ -74,7 +74,7 @@ def main():
         "type": "config",
         "payload": {}
     }
-    print(args.libname)
+
     config["payload"]["libname"] = args.libname
 
     if args.interceptor.startswith("0x") or args.interceptor.startswith("0X"):
@@ -84,6 +84,7 @@ def main():
     
     device = frida.get_usb_device(1)
     if args.inject_method == "spawn":
+        raise Exception("working for this ...")
         pid = device.spawn([args.target])
         config["payload"]["spawn"] = True
     else:

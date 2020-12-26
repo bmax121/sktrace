@@ -43,7 +43,8 @@ class Inst:
                     self.changed_regs_dict[reg_val.keys[0]] = (reg_val.values[0])
 
     def cal_regs_change(self, pre_ctx, ctx):
-        print_every_inst = True
+        print_every_change = True
+        eveny_change_str = None
         # ignore pc
         if not pre_ctx:
             for i in range(31):
@@ -53,15 +54,21 @@ class Inst:
                 if "sp" not in self.changed_regs_dict:
                     self.changed_regs_dict["sp"] = []
                     self.changed_regs_dict["sp"].append(ctx.sp)
-                    if print_every_inst:
-                        print("{}\t;sp={}".format(str(self), ctx.sp))
+                    if print_every_change:
+                        eveny_change_str = ("{}\t; sp={}->{}".format(self.simple_str(), pre_ctx.sp, ctx.sp))
             for i in range(31):
                 if pre_ctx.general_regs[i] != ctx.general_regs[i]:
                     if "x"+str(i) not in self.changed_regs_dict:
                         self.changed_regs_dict["x"+str(i)] = []
                     self.changed_regs_dict["x"+str(i)].append(ctx.general_regs[i])
-                    if print_every_inst:
-                        print("{}\t;x{}={}".format(str(self), str(i), ctx.general_regs[i]))
+                    if print_every_change:
+                        if eveny_change_str:
+                            eveny_change_str += (", x{}={}->{}".format(str(i), pre_ctx.general_regs[i], ctx.general_regs[i]))
+                        else:
+                            eveny_change_str = ("{}\t; x{}={}->{}".format(self.simple_str(), str(i), pre_ctx.general_regs[i], ctx.general_regs[i]))
+
+        if print_every_change and eveny_change_str:
+            print(eveny_change_str)
         pass
 
     def try_strings(self):
@@ -85,18 +92,22 @@ class Inst:
 
         if self.try_strings_set:
             # print("strs\t" + str(self.try_strings_set))
-            print("strs\t" + ",".join(self.try_strings_set))
+            print("strings\t" + ",".join(self.try_strings_set))
 
-    def print_changed_regs(self):
+    def statistics_changed_regs(self):
         if self.changed_regs_dict:
-            change_line = "chng"
+            change_line = "statistics"
             for reg in self.changed_regs_dict:
                 change_reg = "\t{}:{}".format(reg, ",".join(self.changed_regs_dict[reg]))
                 change_line += change_reg
             print(change_line)
     
+    def simple_str(self):
+        inst_line = "{}\t{}\t{}".format(self.addr, self.mnem, self.op)
+        return inst_line
+
     def __str__(self):
-        inst_line = "{}\t{}\t{}\t{}\t{}\t{}".format("inst", self.addr, self.block, self.size, self.mnem, self.op)
+        inst_line = "{}\t{}\t{}\t{}\t{}\t{}".format("instruction", self.addr, self.block, self.size, self.mnem, self.op)
         return inst_line
 
 class Arm64Ctx:
@@ -137,19 +148,6 @@ class Arm64Ctx:
             return ctx_line
 
 
-#  detail format
-'''
-tid  block  addr   size  [transform times]
-tid  inst   addr   mnemonic   op
-tid  ctx    addr   mnemonic   op  changed_reg=val
-'''
-# summary format
-'''
-tid  block  addr   size   inst_addrs
-tid  inst   block  size   mnemonic  op
-tid  chng   {reg:val_list}
-tid  strs   (guess_strs_set)
-'''
 
 
 class TraceMgr:
@@ -195,6 +193,7 @@ class Arm64TraceLog:
                 self.block_dict[inst.block] = Block(inst.block)
             self.block_dict[inst.block].append_inst(inst)
             self.inst_dict[inst.addr] = inst
+            # print(inst)
             pass
         elif type == 'ctx':
             # print(payload)
@@ -205,23 +204,31 @@ class Arm64TraceLog:
                 val["x20"], val["x21"], val["x22"], val["x23"], val["x24"], val["x25"], val["x26"], val["x27"], val["x28"], 
                 val["fp"], val["lr"])
             if ctx.pc not in self.inst_dict:
-                raise Exception('No inst addr:{},Maybe caused by Interceptor.payload:{}'.format(ctx.pc, payload))
+                raise Exception("No inst addr:{} maybe caused by Interceptor.payload:{}".format(ctx.pc, payload))
             self.inst_dict[ctx.pc].add_execed_ctx(ctx)
             self.inst_dict[ctx.pc].cal_regs_change(self.pre_ctx, ctx)
             self.pre_ctx = ctx
             pass
         elif type == "fin":
-            self.summary()
+            self.statistics()
             pass
 
-    def summary(self):
-        print('''=========================================''')
+# statistics
+# '''
+# tid  block  addr   size   inst_addrs
+# tid  inst   block  size   mnemonic  op
+# tid  chng   {reg:val_list}
+# tid  strs   (guess_strs_set)
+# '''
+    def statistics(self):
+        print('''==================== Statistic Start =====================''')
         for block_addr in self.block_dict:
             block = self.block_dict[block_addr]
             print(block)
             for inst in block.insts:
                 print(inst)
-                inst.print_changed_regs()
+                inst.statistics_changed_regs()
                 inst.try_strings()
+        print('''==================== Statistic End =====================''')
             
 

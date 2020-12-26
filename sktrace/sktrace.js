@@ -8,7 +8,8 @@ const arm64CM = new CModule(`
 
 extern void on_message(const gchar *message);
 static void log(const gchar *format, ...);
-static void on_exec(GumCpuContext *cpu_context, gpointer user_data);
+static void on_arm64_before(GumCpuContext *cpu_context, gpointer user_data);
+static void on_arm64_after(GumCpuContext *cpu_context, gpointer user_data);
 
 void hello() {
     on_message("Hello form CModule");
@@ -52,13 +53,13 @@ void transform(GumStalkerIterator *iterator,
         gboolean in_target = (gpointer)insn->address >= base && (gpointer)insn->address < end;
         if(in_target)
         {
-            // addr,mnem,op_str
             log("%p\t%s\t%s", (gpointer)insn->address, insn->mnemonic, insn->op_str);
+            gum_stalker_iterator_put_callout(iterator, on_arm64_before, (gpointer) insn->address, NULL);
         }
         gum_stalker_iterator_keep(iterator);
         if(in_target) 
         {
-            gum_stalker_iterator_put_callout(iterator, on_exec, (gpointer) insn->address, NULL);
+            gum_stalker_iterator_put_callout(iterator, on_arm64_after, (gpointer) insn->address, NULL);
         }
     }
 }
@@ -75,25 +76,24 @@ const gchar * cpu_format = "
     ";
 
 static void
-on_exec(GumCpuContext *cpu_context,
+on_arm64_before(GumCpuContext *cpu_context,
         gpointer user_data)
 {
-    log(cpu_format, 
-        cpu_context->pc, cpu_context->sp, 
-        cpu_context->x[0], cpu_context->x[1], cpu_context->x[2], cpu_context->x[3], cpu_context->x[4], 
-        cpu_context->x[5], cpu_context->x[6], cpu_context->x[7], cpu_context->x[8], cpu_context->x[9], 
-        cpu_context->x[10], cpu_context->x[11], cpu_context->x[12], cpu_context->x[13], cpu_context->x[14],
-        cpu_context->x[15], cpu_context->x[16], cpu_context->x[17], cpu_context->x[18], cpu_context->x[19], 
-        cpu_context->x[20], cpu_context->x[21], cpu_context->x[22], cpu_context->x[23], cpu_context->x[24], 
-        cpu_context->x[25], cpu_context->x[26], cpu_context->x[27], cpu_context->x[28], 
-        cpu_context->fp, cpu_context->lr 
-        );
+
+}
+
+static void
+on_arm64_after(GumCpuContext *cpu_context,
+        gpointer user_data)
+{
+
 }
 
 `, {
     on_message: new NativeCallback(messagePtr => {
         const message = messagePtr.readUtf8String();
-        send(message)
+        console.log(message)
+        // send(message)
       }, 'void', ['pointer']),
 });
 
@@ -214,7 +214,8 @@ function watcherLib(libname, callback) {
 
 
 (() => {
-    console.log('==== sktrace ====');
+
+    console.log(`----- start trace -----`);
 
     recv("config", (msg) => {
         const payload = msg.payload;
@@ -222,9 +223,9 @@ function watcherLib(libname, callback) {
         const libname = payload.libname;
         console.log(`libname:${libname}`)
         if(payload.spawn) {
-            //
+            console.error(`todo: spawn inject not implemented`)
         } else {
-            const modules = Process.enumerateModules();
+            // const modules = Process.enumerateModules();
             const targetModule = Process.getModuleByName(libname);
             let targetAddress = null;
             if("symbol" in payload) {
