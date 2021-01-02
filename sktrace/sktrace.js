@@ -45,20 +45,21 @@ void transform(GumStalkerIterator *iterator,
 {
     cs_insn *insn;
 
-    gpointer base = *(gpointer*)user_data;
+    gpointer start = *(gpointer*)user_data;
     gpointer end = *(gpointer*)(user_data + sizeof(gpointer));
     
     while (gum_stalker_iterator_next(iterator, &insn))
     {
-        gboolean in_target = (gpointer)insn->address >= base && (gpointer)insn->address < end;
+        gboolean in_target = (gpointer)insn->address >= start && (gpointer)insn->address < end;
         if(in_target)
         {
-            log("%p\t%s\t%s", (gpointer)insn->address, insn->mnemonic, insn->op_str);
+            log("%d\t%p\t%s\t%s", insn->id, (gpointer)insn->address, insn->mnemonic, insn->op_str);
             gum_stalker_iterator_put_callout(iterator, on_arm64_before, (gpointer) insn->address, NULL);
         }
         gum_stalker_iterator_keep(iterator);
         if(in_target) 
         {
+            // b instruction will not call this
             gum_stalker_iterator_put_callout(iterator, on_arm64_after, (gpointer) insn->address, NULL);
         }
     }
@@ -79,21 +80,20 @@ static void
 on_arm64_before(GumCpuContext *cpu_context,
         gpointer user_data)
 {
-
+    // log("before pc:%p", cpu_context->pc);
 }
 
 static void
 on_arm64_after(GumCpuContext *cpu_context,
         gpointer user_data)
 {
-
+    // log("after pc:%p", cpu_context->pc);
 }
 
 `, {
     on_message: new NativeCallback(messagePtr => {
         const message = messagePtr.readUtf8String();
         console.log(message)
-        // send(message)
       }, 'void', ['pointer']),
 });
 
@@ -113,58 +113,14 @@ function stalkerTraceRangeC(tid, base, size) {
     })
 }
 
-
-function stalkerTraceRange(tid, base, size) {
-    Stalker.follow(tid, {
-        transform: (iterator) => {
-            const instruction = iterator.next();
-            const startAddress = instruction.address;
-            const isModuleCode = startAddress.compare(base) >= 0 && 
-                startAddress.compare(base.add(size)) < 0;
-            // const isModuleCode = true;
-            do {
-                iterator.keep();
-                if (isModuleCode) {
-                    send({
-                        type: 'inst',
-                        tid: tid,
-                        block: startAddress,
-                        val: JSON.stringify(instruction)
-                    })
-                    iterator.putCallout((context) => {
-                            send({
-                                type: 'ctx',
-                                tid: tid,
-                                val: JSON.stringify(context)
-                            })
-                    })
-                }
-            } while (iterator.next() !== null);
-        }
-    })
-}
-
-
 function traceAddr(addr) {
     let moduleMap = new ModuleMap();    
     let targetModule = moduleMap.find(addr);
-    console.log(JSON.stringify(targetModule))
-    let exports = targetModule.enumerateExports();
-    let symbols = targetModule.enumerateSymbols();
-    // send({
-    //     type: "module", 
-    //     targetModule
-    // })
-    // send({
-    //     type: "sym",
-    
 
-    // })
     Interceptor.attach(addr, {
         onEnter: function(args) {
             this.tid = Process.getCurrentThreadId()
-            // stalkerTraceRangeC(this.tid, targetModule.base, targetModule.size)
-            stalkerTraceRange(this.tid, targetModule.base, targetModule.size)
+            stalkerTraceRangeC(this.tid, targetModule.base, targetModule.size)
         },
         onLeave: function(ret) {
             Stalker.unfollow(this.tid);
@@ -178,62 +134,14 @@ function traceAddr(addr) {
 }
 
 
-function traceSymbol(symbol) {
 
-}
-
-/**
- * from jnitrace-egine
- */
-function watcherLib(libname, callback) {
-    const dlopenRef = Module.findExportByName(null, "dlopen");
-    const dlsymRef = Module.findExportByName(null, "dlsym");
-    const dlcloseRef = Module.findExportByName(null, "dlclose");
-
-    if (dlopenRef !== null && dlsymRef !== null && dlcloseRef !== null) {
-        const dlopen = new NativeFunction(dlopenRef, "pointer", ["pointer", "int"]);
-        Interceptor.replace(dlopen, new NativeCallback((filename, mode) => {
-            const path = filename.readCString();
-            const retval = dlopen(filename, mode);
-    
-            if (path !== null) {
-                if (checkLibrary(path)) {
-                    // eslint-disable-next-line @typescript-eslint/no-base-to-string
-                    trackedLibs.set(retval.toString(), true);
-                } else {
-                    // eslint-disable-next-line @typescript-eslint/no-base-to-string
-                    libBlacklist.set(retval.toString(), true);
-                }
-            }
-
-            return retval;
-        }, "pointer", ["pointer", "int"]));
-    }
-}
-
-
-
-(() => {
-
-    console.log(`----- start trace -----`);
-
-    recv("config", (msg) => {
-        const payload = msg.payload;
-        console.log(JSON.stringify(payload))
-        const libname = payload.libname;
-        console.log(`libname:${libname}`)
-        if(payload.spawn) {
-            console.error(`todo: spawn inject not implemented`)
-        } else {
-            // const modules = Process.enumerateModules();
-            const targetModule = Process.getModuleByName(libname);
-            let targetAddress = null;
-            if("symbol" in payload) {
-                targetAddress = targetModule.findExportByName(payload.symbol);
-            } else if("offset" in payload) {
-                targetAddress = targetModule.base.add(ptr(payload.offset));
-            }
-            traceAddr(targetAddress)
-        }
-    })
+(()=> {
+    console.log('loading ...')
+    const symbol = "test";
+    const libname = "libnative-lib.so"
+    const targetModule = Process.getModuleByName(libname);
+    console.log(JSON.stringify(targetModule))
+    let targetAddress = targetModule.findExportByName(symbol);
+    traceAddr(targetAddress)
 })()
+
