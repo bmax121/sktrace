@@ -53,8 +53,8 @@ void transform(GumStalkerIterator *iterator,
         gboolean in_target = (gpointer)insn->address >= start && (gpointer)insn->address < end;
         if(in_target)
         {
-            log("%d\t%p\t%s\t%s", insn->id, (gpointer)insn->address, insn->mnemonic, insn->op_str);
-            gum_stalker_iterator_put_callout(iterator, on_arm64_before, (gpointer) insn->address, NULL);
+            log("%p\t%s\t%s", insn->id, (gpointer)insn->address, insn->mnemonic, insn->op_str);
+            gum_stalker_iterator_put_callout(iterator, on_arm64_before, (gpointer) insn, NULL);
         }
         gum_stalker_iterator_keep(iterator);
         if(in_target) 
@@ -81,6 +81,9 @@ on_arm64_before(GumCpuContext *cpu_context,
         gpointer user_data)
 {
     // log("before pc:%p", cpu_context->pc);
+
+    cs_insn *insn = (gpointer) user_data;
+    log("%p\t%s\t%s", insn->address, insn->mnemonic, insn->op_str);
 }
 
 static void
@@ -98,10 +101,10 @@ on_arm64_after(GumCpuContext *cpu_context,
 });
 
 
-const userData = Memory.alloc(Process.pageSize);
 function stalkerTraceRangeC(tid, base, size) {
     // const hello = new NativeFunction(cm.hello, 'void', []);
     // hello();
+    const userData = Memory.alloc(Process.pageSize);
     userData.writePointer(base)
     const pointerSize = Process.pointerSize;
     userData.add(pointerSize).writePointer(base.add(size))

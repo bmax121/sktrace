@@ -91,7 +91,6 @@ class Inst:
                 self.try_strings_set.add(try_str)
 
         if self.try_strings_set:
-            # print("strs\t" + str(self.try_strings_set))
             print("strings\t" + ",".join(self.try_strings_set))
 
     def statistics_changed_regs(self):
@@ -217,7 +216,7 @@ class Arm64TraceLog:
 # '''
 # tid  block  addr   size   inst_addrs
 # tid  inst   block  size   mnemonic  op
-# tid  chng   {reg:val_list}
+# tid  chng   reg:val_list
 # tid  strs   (guess_strs_set)
 # '''
     def statistics(self):
