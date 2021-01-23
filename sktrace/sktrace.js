@@ -6,21 +6,32 @@ const arm64CM = new CModule(`
 #include <string.h>
 #include <stdlib.h>
 
+
 extern void on_message(const gchar *message);
 static void log(const gchar *format, ...);
 static void on_arm64_before(GumCpuContext *cpu_context, gpointer user_data);
 static void on_arm64_after(GumCpuContext *cpu_context, gpointer user_data);
 
+typedef struct CalloutUserData {
+    cs_insn *insn;
+    GumCpuContext *prev_cpu_context;
+} CalloutUserData;
+
+
+typedef struct TransformUserData {
+    guint16 tid;
+    gpointer start;
+    gpointer end;
+} TransformUserData;
+
+typedef struct TraceTidCtx {
+    TransformUserData transform_user_data;
+    
+} TraceTidCtx;
+
+
 void hello() {
     on_message("Hello form CModule");
-}
-
-gpointer shared_mem[] = {0, 0};
-
-gpointer 
-get_shared_mem() 
-{
-    return shared_mem;
 }
 
 
@@ -38,76 +49,75 @@ log(const gchar *format, ...)
     g_free(message);
 }
 
-
 void transform(GumStalkerIterator *iterator,
                GumStalkerOutput *output,
                gpointer user_data)
 {
     cs_insn *insn;
 
-    gpointer start = *(gpointer*)user_data;
-    gpointer end = *(gpointer*)(user_data + sizeof(gpointer));
-    
+    TransformUserData *tranf_ud = (TransformUserData*) user_data;
+    guint16 tid = tranf_ud->tid;
+    gpointer start = tranf_ud->start;
+    gpointer end = tranf_ud->end;
+
+    gboolean first_ins_in_block = TRUE;
+
     while (gum_stalker_iterator_next(iterator, &insn))
     {
         gboolean in_target = (gpointer)insn->address >= start && (gpointer)insn->address < end;
-        if(in_target)
+        if(in_target && first_ins_in_block)
         {
-            log("%p\t%s\t%s", insn->id, (gpointer)insn->address, insn->mnemonic, insn->op_str);
-            gum_stalker_iterator_put_callout(iterator, on_arm64_before, (gpointer) insn, NULL);
+            // gum_stalker_iterator_put_callout(iterator, on_arm64_before, (gpointer) insn, NULL);
         }
         gum_stalker_iterator_keep(iterator);
         if(in_target) 
         {
-            // b instruction will not call this
-            gum_stalker_iterator_put_callout(iterator, on_arm64_after, (gpointer) insn->address, NULL);
+            // branch not call
+            // gum_stalker_iterator_put_callout(iterator, on_arm64_after, (gpointer) insn, NULL);
         }
+        first_ins_in_block = FALSE;
     }
 }
 
 
-const gchar * cpu_format = "
-    0x%x\t0x%x\t0x%x\t0x%x\t0x%x
-    \t0x%x\t0x%x\t0x%x\t0x%x\t0x%x
-    \t0x%x\t0x%x\t0x%x\t0x%x\t0x%x
-    \t0x%x\t0x%x\t0x%x\t0x%x\t0x%x
-    \t0x%x\t0x%x\t0x%x\t0x%x\t0x%x
-    \t0x%x\t0x%x\t0x%x\t0x%x\t0x%x
-    \t0x%x\t0x%x\t0x%x
-    ";
+GumCpuContext prev_cpu_context = {0};
 
 static void
 on_arm64_before(GumCpuContext *cpu_context,
-        gpointer user_data)
+    gpointer user_data)
 {
-    // log("before pc:%p", cpu_context->pc);
-
-    cs_insn *insn = (gpointer) user_data;
-    log("%p\t%s\t%s", insn->address, insn->mnemonic, insn->op_str);
+    // cs_insn *insn = (gpointer) user_data;
+    // log("%p\t%s\t%s", insn->address, insn->mnemonic, insn->op_str);
+    // memcpy(&prev_cpu_context, cpu_context, sizeof(GumCpuContext));
 }
 
 static void
 on_arm64_after(GumCpuContext *cpu_context,
-        gpointer user_data)
+    gpointer user_data)
 {
-    // log("after pc:%p", cpu_context->pc);
+    log("after pc:%p", cpu_context->pc);
 }
 
 `, {
     on_message: new NativeCallback(messagePtr => {
         const message = messagePtr.readUtf8String();
         console.log(message)
+
       }, 'void', ['pointer']),
 });
 
 
+const userData = Memory.alloc(Process.pageSize);
+const pointerSize = Process.pointerSize;
 function stalkerTraceRangeC(tid, base, size) {
     // const hello = new NativeFunction(cm.hello, 'void', []);
     // hello();
-    const userData = Memory.alloc(Process.pageSize);
-    userData.writePointer(base)
-    const pointerSize = Process.pointerSize;
-    userData.add(pointerSize).writePointer(base.add(size))
+    var udPtr = userData;
+    udPtr.writeU16(tid);
+    udPtr = udPtr.add(pointerSize);
+    udPtr.writePointer(base);
+    udPtr = udPtr.add(pointerSize);
+    udPtr.writePointer(base.add(size));
     
     Stalker.follow(tid, {
         transform: arm64CM.transform,
@@ -116,13 +126,18 @@ function stalkerTraceRangeC(tid, base, size) {
     })
 }
 
+
 function traceAddr(addr) {
     let moduleMap = new ModuleMap();    
     let targetModule = moduleMap.find(addr);
 
+
+    console.log(addr)
+
     Interceptor.attach(addr, {
         onEnter: function(args) {
             this.tid = Process.getCurrentThreadId()
+            console.log(this.tid)
             stalkerTraceRangeC(this.tid, targetModule.base, targetModule.size)
         },
         onLeave: function(ret) {
@@ -135,7 +150,6 @@ function traceAddr(addr) {
         }
     })
 }
-
 
 
 (()=> {
