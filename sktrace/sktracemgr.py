@@ -171,8 +171,8 @@ class TraceMgr:
             tid = payload['tid']
             if tid not in self.tid_trace_dict:
                 self.tid_trace_dict[tid] = Arm64TraceLog(tid)
-            else:
-                self.tid_trace_dict[tid].on_message(payload)
+    
+            self.tid_trace_dict[tid].on_message(payload)
 
 
 class Arm64TraceLog:
